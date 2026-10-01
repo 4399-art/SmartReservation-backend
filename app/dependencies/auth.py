@@ -1,0 +1,30 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.model.user import User, UserStatus
+
+from app.utils.jwt import decode_access_token
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)
+) -> User:
+    # jwt鉴权
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="无效的token")
+    # 获取到用户ID
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="无效用户id")
+
+# 查询用户是否禁用
+    user = db.query(User).filter(User.id == user_id).first()
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="用户已禁用")
+    else:
+        return user
