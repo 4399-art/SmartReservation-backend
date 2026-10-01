@@ -192,3 +192,68 @@ def root():
 | 用户已禁用（访问时） | 401 | — |
 
 > 说明：登录接口本身返回 200，通过 body.code 区分业务状态；而 `get_current_user` 依赖中校验失败会直接抛出 HTTP 401，不会进入路由函数体。
+
+## 五、全局异常处理
+
+通过自定义异常 + FastAPI 全局异常处理器，统一整个应用的错误响应格式。
+
+### 架构
+
+```
+app/common/exceptions.py          # 异常定义 + 处理器
+app/schemas/response.py           # ApiResponse.error() 统一响应格式
+main.py                           # 注册处理器到 FastAPI 应用
+```
+
+### 异常类型与处理策略
+
+```
+请求进入
+    │
+    ├── 业务逻辑抛出 BusinessException ──→ HTTP 200, body: { code: 业务码, message: "..." }
+    │
+    ├── FastAPI 抛出 HTTPException    ──→ HTTP 透传, body: { code: 状态码, message: "..." }
+    │
+    ├── Pydantic 校验失败              ──→ HTTP 422, body: { code: 422, message: "请求参数校验错误" }
+    │
+    └── 其他未捕获异常                 ──→ HTTP 500, body: { code: 500, message: "服务器内部错误" }
+```
+
+### BusinessException — 业务异常
+
+```python
+from app.common.exceptions import BusinessException
+
+# 在业务代码中抛出
+if not user:
+    raise BusinessException(message="用户不存在", code=404)
+
+if balance < amount:
+    raise BusinessException(message="余额不足")
+
+# 默认 code=400
+raise BusinessException(message="操作失败")
+```
+
+| 特点 | 说明 |
+|------|------|
+| 返回 HTTP 200 | 业务异常不是技术故障，HTTP 层面视为成功 |
+| body.code 灵活 | 可传入任意业务错误码 |
+| 无需 return | 直接 `raise`，处理器自动构建 `ApiResponse` |
+
+### 注册方式
+
+```python
+# main.py
+from app.common.exceptions import (
+    BusinessException, business_exception_handler,
+    http_exception_handler, validation_exception_handler, global_exception_handler,
+)
+
+app.add_exception_handler(BusinessException, business_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
+```
+
+> **注意顺序**：`Exception` 必须最后注册，否则会吞噬前面所有特定异常。
