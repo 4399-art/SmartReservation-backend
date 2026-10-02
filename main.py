@@ -41,10 +41,12 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 origins = settings.cors_origins_list
 
+is_wildcard = origins == ["*"]
+
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=origins,
-	allow_credentials=True,
+	allow_credentials=not is_wildcard,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
