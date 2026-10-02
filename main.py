@@ -1,8 +1,13 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 
 from app.model.user import User
 from app.database import Base, engine
+
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.common.exceptions import (
     BusinessException,
     business_exception_handler,
@@ -11,18 +16,40 @@ from app.common.exceptions import (
     global_exception_handler,
 )
 from app.api.auth import router as auth_router
+from app.config import settings
 
-app = FastAPI()
 
-# 注册全局异常处理器
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("=== 应用启动，初始化数据库表 ===")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("=== 数据库表初始化完成 ===")
+    except Exception as e:
+        print(f"=== 数据库连接失败（应用仍会启动）: {e} ===")
+    yield
+    print("=== 应用关闭 ===")
+
+
+app = FastAPI(lifespan=lifespan)
+
 app.add_exception_handler(BusinessException, business_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
-app.include_router(auth_router)
 
-Base.metadata.create_all(bind=engine)
+origins = settings.cors_origins_list
+
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=origins,
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
+)
+
+app.include_router(auth_router)
 
 
 @app.get("/")
