@@ -18,3 +18,8 @@ class Response(BaseModel):
     @classmethod
     def error(cls, code: int = status.HTTP_500_INTERNAL_SERVER_ERROR, message: str = "服务器内部错误"):
         return cls(code=code, message=message)
+
+class PageResponse(BaseModel):
+    """分页的返回结果"""
+    list: Any = []
+    total: int = 0

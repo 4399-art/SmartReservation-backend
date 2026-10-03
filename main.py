@@ -22,16 +22,35 @@ from app.api.user import router as user_router
 from app.config import settings, UPLOAD_DIR
 
 
+def _print_banner(db_ok: bool):
+    banner = r"""
+  ____          _           ____                 _      _____            _             _       
+ / ___| __ _ __| |_ __ ___ |  _ \ ___  __ _  ___| |_   | ____|_ __   ___| |_ _ __ __ _| |_ ___ 
+ \___ \/ _` / _` | '_ ` _ \| |_) / _ \/ _` |/ __| __|  |  _| | '_ \ / _ \ __| '__/ _` | __/ _ \
+  ___) | (_| | (_| | | | | |  _ <  __/ (_| | (__| |_   | |___| | | |  __/ |_| | | (_| | ||  __/
+ |____/ \__,_|\__,_|_| |_|_|_| \_\___|\__,_|\___|\__|  |_____|_| |_|\___|\__|_|  \__,_|\__\___|
+    """
+    print(banner)
+    print(f"  服务名称: 智能实验室预约系统")
+    print(f"  服务地址: {settings.SERVER_HOST}")
+    print(f"  API 前缀: /api")
+    print(f"  数据库  : {'✓ 已连接' if db_ok else '✗ 连接失败'}")
+    print(f"  静态资源: /uploads")
+    print("-" * 64)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("=== 应用启动，初始化数据库表 ===")
+    db_ok = True
     try:
         Base.metadata.create_all(bind=engine)
-        print("=== 数据库表初始化完成 ===")
     except Exception as e:
-        print(f"=== 数据库连接失败（应用仍会启动）: {e} ===")
+        db_ok = False
+        print(f"  [警告] 数据库连接失败（应用仍会启动）: {e}")
+
+    _print_banner(db_ok)
     yield
-    print("=== 应用关闭 ===")
+    print("\n  智能实验室预约系统已关闭  \n")
 
 
 app = FastAPI(lifespan=lifespan)

@@ -28,3 +28,11 @@ def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="用户已禁用")
     else:
         return user
+
+from app.common.exceptions import BusinessException
+
+def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    """只有管理员才能访问"""
+    if current_user.role != "admin":
+        raise BusinessException(message="无权限访问", code=403)
+    return current_user
