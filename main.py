@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
+from starlette.staticfiles import StaticFiles
 
 from app.model.user import User
 from app.database import Base, engine
@@ -16,7 +17,9 @@ from app.common.exceptions import (
     global_exception_handler,
 )
 from app.api.auth import router as auth_router
-from app.config import settings
+from app.api.files import router as files_router
+from app.api.user import router as user_router
+from app.config import settings, UPLOAD_DIR
 
 
 @asynccontextmanager
@@ -38,6 +41,8 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
+# 挂载静态资源：/uploads/xxx.jpg → uploads/xxx.jpg
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 origins = settings.cors_origins_list
 
@@ -51,8 +56,11 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-app.include_router(auth_router)
-
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(files_router)
+api_router.include_router(user_router)
+app.include_router(api_router)
 
 @app.get("/")
 def root():
