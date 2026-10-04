@@ -20,8 +20,13 @@ from app.api.auth import router as auth_router
 from app.api.equipment import router as equipment_router
 from app.api.files import router as files_router
 from app.api.lab import router as lab_router
+from app.api.reservation import router as reservation_router
 from app.api.user import router as user_router
 from app.config import settings, UPLOAD_DIR
+
+from app.model.equipment import Equipment
+from app.model.lab import Lab
+from app.model.reservation import Reservation
 
 
 def _print_banner(db_ok: bool):
@@ -83,6 +88,7 @@ api_router.include_router(files_router)
 api_router.include_router(user_router)
 api_router.include_router(lab_router)
 api_router.include_router(equipment_router)
+api_router.include_router(reservation_router)
 app.include_router(api_router)
 
 @app.get("/")
