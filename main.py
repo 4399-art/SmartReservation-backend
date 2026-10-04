@@ -17,7 +17,9 @@ from app.common.exceptions import (
     global_exception_handler,
 )
 from app.api.auth import router as auth_router
+from app.api.equipment import router as equipment_router
 from app.api.files import router as files_router
+from app.api.lab import router as lab_router
 from app.api.user import router as user_router
 from app.config import settings, UPLOAD_DIR
 
@@ -79,6 +81,8 @@ api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
 api_router.include_router(files_router)
 api_router.include_router(user_router)
+api_router.include_router(lab_router)
+api_router.include_router(equipment_router)
 app.include_router(api_router)
 
 @app.get("/")
