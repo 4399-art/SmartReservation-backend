@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.common.response import Response
@@ -9,6 +9,16 @@ from app.schemas.lab import LabCreateRequest, LabUpdateRequest
 from app.service import lab_service
 
 router = APIRouter(prefix="/lab", tags=["实验室管理"])
+
+
+@router.get("/all-open")
+def get_open_labs(
+    keywords: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    res = lab_service.get_open_labs(db, keywords)
+    return Response.success(data=res)
 
 
 @router.get("/all")

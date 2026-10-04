@@ -76,3 +76,13 @@ def delete_lab(db: Session, lab_id: int) -> None:
 def get_all_labs(db: Session) -> list[LabResponse]:
     items = db.query(Lab).order_by(Lab.id.desc()).all()
     return [LabResponse.model_validate(item) for item in items]
+
+
+def get_open_labs(db: Session, keywords: str | None = None) -> list[LabResponse]:
+    query = db.query(Lab).filter(Lab.status == 1)
+    if keywords:
+        query = query.filter(
+            or_(Lab.name.ilike(f"%{keywords}%"), Lab.location.ilike(f"%{keywords}%"))
+        )
+    items = query.order_by(Lab.id.desc()).all()
+    return [LabResponse.model_validate(item) for item in items]
