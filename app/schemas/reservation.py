@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class ReservationCreateRequest(BaseModel):
     space_id: int
     seat_id: int | None = None
+    headcount: int = 1
     date: str
     start_time: str
     end_time: str
@@ -17,6 +18,7 @@ class ReservationResponse(BaseModel):
     space_name: str | None = None
     seat_id: int | None = None
     seat_no: str | None = None
+    headcount: int = 1
     date: str
     start_time: str
     end_time: str

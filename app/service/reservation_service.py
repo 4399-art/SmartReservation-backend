@@ -2,55 +2,125 @@ from sqlalchemy.orm import Session
 
 from app.common.exceptions import BusinessException
 from app.common.response import PageResponse
+from app.model.reservation import Reservation, ReservationStatus
 from app.model.seat import Seat
 from app.model.space import Space
-from app.model.reservation import Reservation, ReservationStatus
 from app.schemas.reservation import (
     ReservationAuditRequest,
     ReservationCreateRequest,
-    ReservationResponse,
 )
 
 
 def _fill_names(r: Reservation) -> dict:
-    resp = ReservationResponse.model_validate(r).model_dump()
-    if r.space:
-        resp["space_name"] = r.space.name
-    if r.seat:
-        resp["seat_no"] = r.seat.seat_no
-    if r.user:
-        resp["user_name"] = r.user.name
-    return resp
+    return {
+        "id": r.id,
+        "user_id": r.user_id,
+        "user_name": r.user.username if r.user else "",
+        "space_id": r.space_id,
+        "space_name": r.space.name if r.space else "",
+        "seat_id": r.seat_id,
+        "seat_no": r.seat.seat_no if r.seat else None,
+        "headcount": r.headcount or 1,
+        "date": r.date,
+        "start_time": r.start_time,
+        "end_time": r.end_time,
+        "remark": r.remark,
+        "status": r.status,
+        "audit_remark": r.audit_remark,
+    }
 
 
-def _check_conflict(
+def _time_to_min(t: str) -> int:
+    if not t:
+        return 0
+    parts = t.split(":")
+    return int(parts[0]) * 60 + int(parts[1]) if len(parts) > 1 else int(parts[0]) * 60
+
+
+def _check_capacity(
     db: Session,
     space_id: int,
-    seat_id: int | None,
+    date: str,
+    start_time: str,
+    end_time: str,
+    headcount: int,
+    exclude_id: int | None = None,
+) -> None:
+    space = db.query(Space).filter(Space.id == space_id).first()
+    if not space:
+        raise BusinessException(message="区域不存在")
+
+    capacity = space.capacity
+    if headcount > capacity:
+        raise BusinessException(message=f"占用名额({headcount}) 超过区域容量({capacity})")
+
+    start_min = _time_to_min(start_time)
+    end_min = _time_to_min(end_time)
+
+    existing = (
+        db.query(Reservation)
+        .filter(
+            Reservation.space_id == space_id,
+            Reservation.date == date,
+            Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.APPROVED]),
+        )
+        .all()
+    )
+    if exclude_id:
+        existing = [r for r in existing if r.id != exclude_id]
+
+    critical = set()
+    critical.add(start_min)
+    critical.add(end_min)
+    active_res = []
+    for r in existing:
+        s = _time_to_min(r.start_time)
+        e = _time_to_min(r.end_time)
+        if s < end_min and e > start_min:
+            critical.add(s)
+            critical.add(e)
+            active_res.append(r)
+
+    if not active_res:
+        return
+
+    max_occupied = 0
+    for t in critical:
+        if t <= start_min or t >= end_min:
+            continue
+        occupied = headcount
+        for r in active_res:
+            if _time_to_min(r.start_time) <= t < _time_to_min(r.end_time):
+                occupied += r.headcount or 1
+        max_occupied = max(max_occupied, occupied)
+
+    if max_occupied > capacity:
+        raise BusinessException(
+            message=f"该时段容量不足：该区域容量 {capacity} 人，当前时段最多可承载 {capacity - headcount} 人"
+        )
+
+
+def _check_seat_conflict(
+    db: Session,
+    space_id: int,
+    seat_id: int,
     date: str,
     start_time: str,
     end_time: str,
     exclude_id: int | None = None,
 ) -> None:
     query = db.query(Reservation).filter(
-        Reservation.date == date,
         Reservation.space_id == space_id,
+        Reservation.seat_id == seat_id,
+        Reservation.date == date,
         Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.APPROVED]),
     )
-    if seat_id:
-        query = query.filter(Reservation.seat_id == seat_id)
-    else:
-        query = query.filter(Reservation.seat_id.is_(None))
-
     if exclude_id:
         query = query.filter(Reservation.id != exclude_id)
 
-    existing = query.all()
-
-    for r in existing:
+    for r in query.all():
         if start_time < r.end_time and end_time > r.start_time:
-            target = f"座位(ID:{seat_id})" if seat_id else f"区域(ID:{space_id})"
-            raise BusinessException(message=f"该时段已被预约（{target}）")
+            raise BusinessException(message=f"该时段座位已被占用（{r.start_time}-{r.end_time}）")
 
 
 def create_reservation(
@@ -63,6 +133,8 @@ def create_reservation(
         raise BusinessException(message="区域已关闭，无法预约")
 
     seat_id = data.seat_id
+    headcount = data.headcount or 1
+
     if seat_id:
         seat = db.query(Seat).filter(Seat.id == seat_id).first()
         if not seat:
@@ -71,13 +143,19 @@ def create_reservation(
             raise BusinessException(message="座位已停用，无法预约")
         if seat.space_id != data.space_id:
             raise BusinessException(message="该座位不属于此区域")
+        headcount = 1
+        _check_seat_conflict(db, data.space_id, seat_id, data.date, data.start_time, data.end_time)
+    else:
+        if headcount < 1:
+            raise BusinessException(message="占用名额至少为 1")
 
-    _check_conflict(db, data.space_id, seat_id, data.date, data.start_time, data.end_time)
+    _check_capacity(db, data.space_id, data.date, data.start_time, data.end_time, headcount)
 
     reservation = Reservation(
         user_id=user_id,
         space_id=data.space_id,
         seat_id=seat_id,
+        headcount=headcount,
         date=data.date,
         start_time=data.start_time,
         end_time=data.end_time,
@@ -156,8 +234,13 @@ def audit_reservation(
         raise BusinessException(message="审核状态无效")
 
     if data.status == ReservationStatus.APPROVED:
-        _check_conflict(
-            db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id
+        if r.seat_id:
+            _check_seat_conflict(
+                db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id
+            )
+        _check_capacity(
+            db, r.space_id, r.date, r.start_time, r.end_time,
+            r.headcount or 1, exclude_id=r.id,
         )
 
     r.status = data.status
@@ -185,7 +268,14 @@ def batch_audit_reservations(
             continue
         if status == ReservationStatus.APPROVED:
             try:
-                _check_conflict(db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id)
+                if r.seat_id:
+                    _check_seat_conflict(
+                        db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id
+                    )
+                _check_capacity(
+                    db, r.space_id, r.date, r.start_time, r.end_time,
+                    r.headcount or 1, exclude_id=r.id,
+                )
             except BusinessException as e:
                 errors.append({"id": rid, "reason": e.message})
                 continue

@@ -71,3 +71,14 @@ def delete_space(
 ):
     space_service.delete_space(db, space_id)
     return Response.success(message="删除成功")
+
+
+@router.get("/{space_id}/occupancy")
+def get_space_occupancy(
+    space_id: int,
+    date: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    res = space_service.get_space_occupancy(db, space_id, date)
+    return Response.success(data=res)

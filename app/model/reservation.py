@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,6 +27,9 @@ class Reservation(Base):
     )
     seat_id: Mapped[int | None] = mapped_column(
         ForeignKey("seats.id"), comment="具体座位，空表示预约整个区域", nullable=True
+    )
+    headcount: Mapped[int] = mapped_column(
+        Integer, comment="占用名额（空间级预约用户填写；座位级默认1）", default=1
     )
     date: Mapped[str] = mapped_column(String(20), comment="预约日期", nullable=False)
     start_time: Mapped[str] = mapped_column(String(20), comment="开始时间", nullable=False)
