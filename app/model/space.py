@@ -2,13 +2,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, Integer
 from app.database import Base
 
-class Lab(Base):
-    __tablename__ = "labs"
-    __table_args__ = {"comment": "实验室信息表"}
 
-    name: Mapped[str] = mapped_column(String(50), comment="实验室名称", nullable=False)
-    location: Mapped[str | None] = mapped_column(String(100), comment="位置")
-    capacity: Mapped[int] = mapped_column(Integer, comment="容纳人数", default=0)
+class Space(Base):
+    __tablename__ = "spaces"
+    __table_args__ = {"comment": "图书馆区域"}
+
+    name: Mapped[str] = mapped_column(String(50), comment="区域名称", nullable=False)
+    location: Mapped[str | None] = mapped_column(String(100), comment="位置，如 A区 3楼")
+    capacity: Mapped[int] = mapped_column(Integer, comment="座位总数", default=0)
     open_time: Mapped[str | None] = mapped_column(String(20), comment="开放开始时间")
     close_time: Mapped[str | None] = mapped_column(String(20), comment="开放结束时间")
     description: Mapped[str | None] = mapped_column(String(500), comment="简介")

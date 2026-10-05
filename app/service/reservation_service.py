@@ -2,8 +2,8 @@ from sqlalchemy.orm import Session
 
 from app.common.exceptions import BusinessException
 from app.common.response import PageResponse
-from app.model.equipment import Equipment
-from app.model.lab import Lab
+from app.model.seat import Seat
+from app.model.space import Space
 from app.model.reservation import Reservation, ReservationStatus
 from app.schemas.reservation import (
     ReservationAuditRequest,
@@ -14,10 +14,10 @@ from app.schemas.reservation import (
 
 def _fill_names(r: Reservation) -> dict:
     resp = ReservationResponse.model_validate(r).model_dump()
-    if r.lab:
-        resp["lab_name"] = r.lab.name
-    if r.equipment:
-        resp["equipment_name"] = r.equipment.name
+    if r.space:
+        resp["space_name"] = r.space.name
+    if r.seat:
+        resp["seat_no"] = r.seat.seat_no
     if r.user:
         resp["user_name"] = r.user.name
     return resp
@@ -25,8 +25,8 @@ def _fill_names(r: Reservation) -> dict:
 
 def _check_conflict(
     db: Session,
-    lab_id: int,
-    equipment_id: int | None,
+    space_id: int,
+    seat_id: int | None,
     date: str,
     start_time: str,
     end_time: str,
@@ -34,13 +34,13 @@ def _check_conflict(
 ) -> None:
     query = db.query(Reservation).filter(
         Reservation.date == date,
-        Reservation.lab_id == lab_id,
+        Reservation.space_id == space_id,
         Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.APPROVED]),
     )
-    if equipment_id:
-        query = query.filter(Reservation.equipment_id == equipment_id)
+    if seat_id:
+        query = query.filter(Reservation.seat_id == seat_id)
     else:
-        query = query.filter(Reservation.equipment_id.is_(None))
+        query = query.filter(Reservation.seat_id.is_(None))
 
     if exclude_id:
         query = query.filter(Reservation.id != exclude_id)
@@ -49,35 +49,35 @@ def _check_conflict(
 
     for r in existing:
         if start_time < r.end_time and end_time > r.start_time:
-            target = f"设备(ID:{equipment_id})" if equipment_id else f"实验室(ID:{lab_id})"
-            raise BusinessException(message=f"该时段已被预约")
+            target = f"座位(ID:{seat_id})" if seat_id else f"区域(ID:{space_id})"
+            raise BusinessException(message=f"该时段已被预约（{target}）")
 
 
 def create_reservation(
     db: Session, data: ReservationCreateRequest, user_id: int
 ) -> dict:
-    lab = db.query(Lab).filter(Lab.id == data.lab_id).first()
-    if not lab:
-        raise BusinessException(message="实验室不存在")
-    if lab.status != 1:
-        raise BusinessException(message="实验室已关闭，无法预约")
+    space = db.query(Space).filter(Space.id == data.space_id).first()
+    if not space:
+        raise BusinessException(message="区域不存在")
+    if space.status != 1:
+        raise BusinessException(message="区域已关闭，无法预约")
 
-    equipment_id = data.equipment_id
-    if equipment_id:
-        eq = db.query(Equipment).filter(Equipment.id == equipment_id).first()
-        if not eq:
-            raise BusinessException(message="设备不存在")
-        if eq.status != 1:
-            raise BusinessException(message="设备维修中，无法预约")
-        if eq.lab_id != data.lab_id:
-            raise BusinessException(message="该设备不属于此实验室")
+    seat_id = data.seat_id
+    if seat_id:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        if not seat:
+            raise BusinessException(message="座位不存在")
+        if seat.status != 1:
+            raise BusinessException(message="座位已停用，无法预约")
+        if seat.space_id != data.space_id:
+            raise BusinessException(message="该座位不属于此区域")
 
-    _check_conflict(db, data.lab_id, equipment_id, data.date, data.start_time, data.end_time)
+    _check_conflict(db, data.space_id, seat_id, data.date, data.start_time, data.end_time)
 
     reservation = Reservation(
         user_id=user_id,
-        lab_id=data.lab_id,
-        equipment_id=equipment_id,
+        space_id=data.space_id,
+        seat_id=seat_id,
         date=data.date,
         start_time=data.start_time,
         end_time=data.end_time,
@@ -107,9 +107,7 @@ def get_my_reservations(
 
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
-    return PageResponse(
-        list=[_fill_names(r) for r in items], total=total
-    )
+    return PageResponse(list=[_fill_names(r) for r in items], total=total)
 
 
 def cancel_reservation(db: Session, reservation_id: int, user_id: int) -> None:
@@ -141,9 +139,7 @@ def get_all_reservations(
 
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
-    return PageResponse(
-        list=[_fill_names(r) for r in items], total=total
-    )
+    return PageResponse(list=[_fill_names(r) for r in items], total=total)
 
 
 def audit_reservation(
@@ -161,7 +157,7 @@ def audit_reservation(
 
     if data.status == ReservationStatus.APPROVED:
         _check_conflict(
-            db, r.lab_id, r.equipment_id, r.date, r.start_time, r.end_time, exclude_id=r.id
+            db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id
         )
 
     r.status = data.status
@@ -189,7 +185,7 @@ def batch_audit_reservations(
             continue
         if status == ReservationStatus.APPROVED:
             try:
-                _check_conflict(db, r.lab_id, r.equipment_id, r.date, r.start_time, r.end_time, exclude_id=r.id)
+                _check_conflict(db, r.space_id, r.seat_id, r.date, r.start_time, r.end_time, exclude_id=r.id)
             except BusinessException as e:
                 errors.append({"id": rid, "reason": e.message})
                 continue

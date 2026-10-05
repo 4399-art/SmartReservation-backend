@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.common.response import Response
 from app.database import get_db
 from app.dependencies.auth import get_current_admin, get_current_user
 from app.model.user import User
-from pydantic import BaseModel
 from app.schemas.reservation import ReservationAuditRequest, ReservationCreateRequest
 from app.service import reservation_service
 
-router = APIRouter(prefix="/reservation", tags=["预约管理"])
+router = APIRouter(prefix="/reservation", tags=["座位预约"])
 
 
 @router.post("")

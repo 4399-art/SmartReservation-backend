@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from langchain_core.tools import tool
 
 from app.database import SessionLocal
-from app.model.equipment import Equipment
-from app.model.lab import Lab
+from app.model.seat import Seat
+from app.model.space import Space
 from app.model.reservation import Reservation, ReservationStatus
 from app.rag.vector_store import get_vector_store
 
@@ -18,22 +18,22 @@ def _status_text(status: int) -> str:
 
 
 @tool
-def list_labs(keywords: str | None = None) -> str:
-    """列出开放中的实验室，可按名称或位置模糊搜索。keywords 可选。"""
+def list_spaces(keywords: str | None = None) -> str:
+    """列出开放中的图书馆区域，可按名称或位置模糊搜索。keywords 可选。"""
     db = _db()
     try:
-        query = db.query(Lab).filter(Lab.status == 1)
+        query = db.query(Space).filter(Space.status == 1)
         if keywords:
             like = f"%{keywords}%"
-            query = query.filter((Lab.name.like(like)) | (Lab.location.like(like)))
-        items = query.order_by(Lab.id.desc()).all()
+            query = query.filter((Space.name.like(like)) | (Space.location.like(like)))
+        items = query.order_by(Space.id.desc()).all()
         if not items:
-            return "当前没有开放的实验室"
+            return "当前没有开放的区域"
         lines = []
-        for lab in items:
+        for sp in items:
             lines.append(
-                f"[ID:{lab.id}] {lab.name} | 位置:{lab.location or '-'} | "
-                f"容纳:{lab.capacity or '-'}人 | 开放时间:{lab.open_time or '-'}~{lab.close_time or '-'}"
+                f"[ID:{sp.id}] {sp.name} | 位置:{sp.location or '-'} | "
+                f"座位数:{sp.capacity or '-'} | 开放:{sp.open_time or '-'}~{sp.close_time or '-'}"
             )
         return "\n".join(lines)
     finally:
@@ -41,72 +41,78 @@ def list_labs(keywords: str | None = None) -> str:
 
 
 @tool
-def get_lab_detail(lab_id: int) -> str:
-    """获取指定实验室的详细信息，包括该实验室下的所有设备列表。"""
+def get_space_detail(space_id: int) -> str:
+    """获取指定区域的详细信息，包括该区域下的座位列表。"""
     db = _db()
     try:
-        lab = db.query(Lab).filter(Lab.id == lab_id).first()
-        if not lab:
-            return f"实验室 ID:{lab_id} 不存在"
-        if lab.status != 1:
-            return f"实验室「{lab.name}」当前已关闭，无法预约"
+        sp = db.query(Space).filter(Space.id == space_id).first()
+        if not sp:
+            return f"区域 ID:{space_id} 不存在"
+        if sp.status != 1:
+            return f"区域「{sp.name}」当前已关闭，无法预约"
 
-        equipments = db.query(Equipment).filter(Equipment.lab_id == lab_id).all()
+        seats = db.query(Seat).filter(Seat.space_id == space_id).order_by(Seat.row, Seat.col).all()
         lines = [
-            f"【实验室】ID:{lab.id} 名称:{lab.name}",
-            f"位置:{lab.location or '-'}  容纳:{lab.capacity or '-'}人  状态:开放",
-            f"开放时间:{lab.open_time or '-'} ~ {lab.close_time or '-'}",
-            f"简介:{lab.description or '无'}",
+            f"【区域】ID:{sp.id} 名称:{sp.name}",
+            f"位置:{sp.location or '-'}  总座位:{sp.capacity or len(seats)}  状态:开放",
+            f"开放时间:{sp.open_time or '-'} ~ {sp.close_time or '-'}",
+            f"简介:{sp.description or '无'}",
         ]
-        if equipments:
-            lines.append("\n【设备列表】")
-            for eq in equipments:
-                status_str = "正常" if eq.status == 1 else "维修中"
+        if seats:
+            lines.append("\n【座位列表】")
+            for s in seats[:30]:
+                tags = []
+                if s.has_power: tags.append("电源")
+                if s.has_socket: tags.append("USB")
+                tag_str = f" [{','.join(tags)}]" if tags else ""
+                status_str = "可用" if s.status == 1 else "停用"
                 lines.append(
-                    f"  [ID:{eq.id}] {eq.name} | 型号:{eq.spec or '-'} | "
-                    f"数量:{eq.quantity} | 状态:{status_str} | 说明:{eq.description or '-'}"
+                    f"  [ID:{s.id}] {s.seat_no} | 类型:{s.seat_type or '普通'}{tag_str} | 状态:{status_str}"
                 )
+            if len(seats) > 30:
+                lines.append(f"  ...共 {len(seats)} 个座位，已显示前30个")
         else:
-            lines.append("\n该实验室暂无设备")
+            lines.append("\n该区域暂无座位")
         return "\n".join(lines)
     finally:
         db.close()
 
 
 @tool
-def check_availability(
-    lab_id: int,
+def check_seat_availability(
+    space_id: int,
     date: str,
     start_time: str,
     end_time: str,
-    equipment_id: int | None = None,
+    seat_id: int | None = None,
 ) -> str:
-    """检查实验室或设备在指定日期时间段是否可预约。
+    """检查区域或座位在指定日期时间段是否可预约。
     date 格式 YYYY-MM-DD，start_time/end_time 格式 HH:mm。
-    equipment_id 可选，不传则检查实验室本身。
+    seat_id 可选，不传则检查该区域所有座位是否都空闲。
     """
     db = _db()
     try:
-        lab = db.query(Lab).filter(Lab.id == lab_id).first()
-        if not lab:
-            return f"实验室 ID:{lab_id} 不存在"
-        if lab.status != 1:
-            return f"实验室「{lab.name}」当前已关闭"
+        sp = db.query(Space).filter(Space.id == space_id).first()
+        if not sp:
+            return f"区域 ID:{space_id} 不存在"
+        if sp.status != 1:
+            return f"区域「{sp.name}」当前已关闭"
 
-        target = f"实验室({lab.name})"
-        eq_filter = Reservation.equipment_id.is_(None)
-        if equipment_id:
-            eq = db.query(Equipment).filter(Equipment.id == equipment_id).first()
-            if not eq:
-                return f"设备 ID:{equipment_id} 不存在"
-            target = f"设备({eq.name} @ {lab.name})"
-            eq_filter = Reservation.equipment_id == equipment_id
+        if seat_id:
+            seat = db.query(Seat).filter(Seat.id == seat_id).first()
+            if not seat:
+                return f"座位 ID:{seat_id} 不存在"
+            target = f"座位({seat.seat_no} @ {sp.name})"
+            eq_filter = Reservation.seat_id == seat_id
+        else:
+            target = f"区域({sp.name})"
+            eq_filter = Reservation.seat_id.is_(None)
 
         existing = (
             db.query(Reservation)
             .filter(
                 Reservation.date == date,
-                Reservation.lab_id == lab_id,
+                Reservation.space_id == space_id,
                 eq_filter,
                 Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.APPROVED]),
             )
@@ -119,13 +125,8 @@ def check_availability(
                 conflicts.append(f"  {r.start_time}~{r.end_time} (预约ID:{r.id}, 状态:{_status_text(r.status)})")
 
         if not conflicts:
-            return (
-                f"✅ {target} 在 {date} {start_time}~{end_time} 可预约"
-            )
-        return (
-            f"❌ {target} 在 {date} {start_time}~{end_time} 与以下预约冲突:\n"
-            + "\n".join(conflicts)
-        )
+            return f"✅ {target} 在 {date} {start_time}~{end_time} 可预约"
+        return f"❌ {target} 在 {date} {start_time}~{end_time} 与以下预约冲突:\n" + "\n".join(conflicts)
     finally:
         db.close()
 
@@ -143,11 +144,11 @@ def list_my_reservations(user_id: int, status: int | None = None) -> str:
             return "暂无预约记录"
         lines = []
         for r in items:
-            lab_name = r.lab.name if r.lab else f"ID:{r.lab_id}"
-            eq_info = f" + 设备:{r.equipment.name}" if r.equipment else ""
+            sp_name = r.space.name if r.space else f"区域ID:{r.space_id}"
+            seat_info = f" + 座位:{r.seat.seat_no}" if r.seat else ""
             lines.append(
                 f"[预约ID:{r.id}] {r.date} {r.start_time}~{r.end_time} | "
-                f"实验室:{lab_name}{eq_info} | 状态:{_status_text(r.status)}"
+                f"区域:{sp_name}{seat_info} | 状态:{_status_text(r.status)}"
                 + (f" | 备注:{r.remark}" if r.remark else "")
                 + (f" | 审核备注:{r.audit_remark}" if r.audit_remark else "")
             )
@@ -159,42 +160,42 @@ def list_my_reservations(user_id: int, status: int | None = None) -> str:
 @tool
 def create_reservation(
     user_id: int,
-    lab_id: int,
+    space_id: int,
     date: str,
     start_time: str,
     end_time: str,
-    equipment_id: int | None = None,
+    seat_id: int | None = None,
     remark: str | None = None,
 ) -> str:
-    """创建预约。参数齐全（lab_id/date/start_time/end_time 都有值）时直接调用，
+    """创建座位预约。参数齐全（space_id/date/start_time/end_time 都有值）时直接调用，
     不要再问用户"确认吗"。date 格式 YYYY-MM-DD，start_time/end_time 格式 HH:mm。
-    调用前请先用 check_availability 确认该时段可约。"""
+    调用前请先用 check_seat_availability 确认该时段可约。"""
     db = _db()
     try:
-        lab = db.query(Lab).filter(Lab.id == lab_id).first()
-        if not lab:
-            return f"实验室 ID:{lab_id} 不存在"
-        if lab.status != 1:
-            return f"实验室「{lab.name}」已关闭，无法预约"
+        sp = db.query(Space).filter(Space.id == space_id).first()
+        if not sp:
+            return f"区域 ID:{space_id} 不存在"
+        if sp.status != 1:
+            return f"区域「{sp.name}」已关闭，无法预约"
 
-        if equipment_id:
-            eq = db.query(Equipment).filter(Equipment.id == equipment_id).first()
-            if not eq:
-                return f"设备 ID:{equipment_id} 不存在"
-            if eq.status != 1:
-                return f"设备「{eq.name}」维修中，无法预约"
-            if eq.lab_id != lab_id:
-                return f"设备「{eq.name}」不属于实验室「{lab.name}」"
+        if seat_id:
+            seat = db.query(Seat).filter(Seat.id == seat_id).first()
+            if not seat:
+                return f"座位 ID:{seat_id} 不存在"
+            if seat.status != 1:
+                return f"座位「{seat.seat_no}」已停用，无法预约"
+            if seat.space_id != space_id:
+                return f"座位「{seat.seat_no}」不属于区域「{sp.name}」"
 
-        eq_filter = Reservation.equipment_id.is_(None)
-        if equipment_id:
-            eq_filter = Reservation.equipment_id == equipment_id
+        eq_filter = Reservation.seat_id.is_(None)
+        if seat_id:
+            eq_filter = Reservation.seat_id == seat_id
 
         existing = (
             db.query(Reservation)
             .filter(
                 Reservation.date == date,
-                Reservation.lab_id == lab_id,
+                Reservation.space_id == space_id,
                 eq_filter,
                 Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.APPROVED]),
             )
@@ -206,8 +207,8 @@ def create_reservation(
 
         reservation = Reservation(
             user_id=user_id,
-            lab_id=lab_id,
-            equipment_id=equipment_id,
+            space_id=space_id,
+            seat_id=seat_id,
             date=date,
             start_time=start_time,
             end_time=end_time,
@@ -218,11 +219,11 @@ def create_reservation(
         db.commit()
         db.refresh(reservation)
 
-        eq_str = f" + 设备ID:{equipment_id}" if equipment_id else ""
+        seat_str = f" + 座位ID:{seat_id}" if seat_id else ""
         return (
             f"✅ 预约创建成功!\n"
             f"预约ID: {reservation.id}\n"
-            f"实验室: {lab.name}(ID:{lab_id}){eq_str}\n"
+            f"区域: {sp.name}(ID:{space_id}){seat_str}\n"
             f"时间: {date} {start_time}~{end_time}\n"
             f"状态: 待审核\n"
             f"请等待管理员审核后生效"
@@ -249,10 +250,11 @@ def cancel_reservation(user_id: int, reservation_id: int) -> str:
         if r.status in (ReservationStatus.PENDING, ReservationStatus.APPROVED):
             r.status = ReservationStatus.CANCELLED
             db.commit()
-            lab_name = r.lab.name if r.lab else f"ID:{r.lab_id}"
+            sp_name = r.space.name if r.space else f"区域ID:{r.space_id}"
+            seat_info = f" 座位:{r.seat.seat_no}" if r.seat else ""
             return (
                 f"✅ 已取消预约 ID:{reservation_id}\n"
-                f"实验室:{lab_name} | 时间:{r.date} {r.start_time}~{r.end_time}"
+                f"区域:{sp_name}{seat_info} | 时间:{r.date} {r.start_time}~{r.end_time}"
             )
         if r.status == ReservationStatus.CANCELLED:
             return f"预约 ID:{reservation_id} 已经是取消状态"
@@ -300,9 +302,9 @@ def get_date_info() -> str:
 
 
 ALL_TOOLS = [
-    list_labs,
-    get_lab_detail,
-    check_availability,
+    list_spaces,
+    get_space_detail,
+    check_seat_availability,
     list_my_reservations,
     create_reservation,
     cancel_reservation,

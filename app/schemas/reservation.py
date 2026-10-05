@@ -2,8 +2,8 @@ from pydantic import BaseModel
 
 
 class ReservationCreateRequest(BaseModel):
-    lab_id: int
-    equipment_id: int | None = None
+    space_id: int
+    seat_id: int | None = None
     date: str
     start_time: str
     end_time: str
@@ -13,10 +13,10 @@ class ReservationCreateRequest(BaseModel):
 class ReservationResponse(BaseModel):
     id: int
     user_id: int
-    lab_id: int
-    lab_name: str | None = None
-    equipment_id: int | None = None
-    equipment_name: str | None = None
+    space_id: int
+    space_name: str | None = None
+    seat_id: int | None = None
+    seat_no: str | None = None
     date: str
     start_time: str
     end_time: str

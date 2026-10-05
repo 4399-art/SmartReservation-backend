@@ -1,73 +1,73 @@
-﻿from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.common.response import Response
 from app.database import get_db
 from app.dependencies.auth import get_current_admin, get_current_user
 from app.model.user import User
-from app.schemas.lab import LabCreateRequest, LabUpdateRequest
-from app.service import lab_service
+from app.schemas.space import SpaceCreateRequest, SpaceUpdateRequest
+from app.service import space_service
 
-router = APIRouter(prefix="/lab", tags=["实验室管理"])
+router = APIRouter(prefix="/space", tags=["区域管理"])
 
 
 @router.get("/all-open")
-def get_open_labs(
+def get_open_spaces(
     keywords: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    res = lab_service.get_open_labs(db, keywords)
+    res = space_service.get_open_spaces(db, keywords)
     return Response.success(data=res)
 
 
 @router.get("/all")
-def get_all_labs(
+def get_all_spaces(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    res = lab_service.get_all_labs(db)
+    res = space_service.get_all_spaces(db)
     return Response.success(data=res)
 
 
 @router.get("/list")
-def get_lab_list(
+def get_space_list(
     page: int = 1,
     page_size: int = 10,
     keywords: str | None = None,
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    res = lab_service.get_lab_page_list(db, page, page_size, keywords)
+    res = space_service.get_space_page_list(db, page, page_size, keywords)
     return Response.success(data=res)
 
 
 @router.post("")
-def create_lab(
-    data: LabCreateRequest,
+def create_space(
+    data: SpaceCreateRequest,
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    res = lab_service.create_lab(db, data)
+    res = space_service.create_space(db, data)
     return Response.success(data=res)
 
 
-@router.put("/{lab_id}")
-def update_lab(
-    lab_id: int,
-    data: LabUpdateRequest,
+@router.put("/{space_id}")
+def update_space(
+    space_id: int,
+    data: SpaceUpdateRequest,
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    res = lab_service.update_lab(db, lab_id, data)
+    res = space_service.update_space(db, space_id, data)
     return Response.success(data=res)
 
 
-@router.delete("/{lab_id}")
-def delete_lab(
-    lab_id: int,
+@router.delete("/{space_id}")
+def delete_space(
+    space_id: int,
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    lab_service.delete_lab(db, lab_id)
+    space_service.delete_space(db, space_id)
     return Response.success(message="删除成功")

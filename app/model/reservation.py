@@ -3,8 +3,8 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.model.equipment import Equipment
-from app.model.lab import Lab
+from app.model.seat import Seat
+from app.model.space import Space
 from app.model.user import User
 
 
@@ -17,16 +17,16 @@ class ReservationStatus(enum.IntEnum):
 
 class Reservation(Base):
     __tablename__ = "reservations"
-    __table_args__ = {"comment": "预约信息"}
+    __table_args__ = {"comment": "座位预约"}
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), comment="预约人", nullable=False
     )
-    lab_id: Mapped[int] = mapped_column(
-        ForeignKey("labs.id"), comment="实验室", nullable=False
+    space_id: Mapped[int] = mapped_column(
+        ForeignKey("spaces.id"), comment="所属区域", nullable=False
     )
-    equipment_id: Mapped[int | None] = mapped_column(
-        ForeignKey("equipments.id"), comment="设备，空表示预约实验室", nullable=True
+    seat_id: Mapped[int | None] = mapped_column(
+        ForeignKey("seats.id"), comment="具体座位，空表示预约整个区域", nullable=True
     )
     date: Mapped[str] = mapped_column(String(20), comment="预约日期", nullable=False)
     start_time: Mapped[str] = mapped_column(String(20), comment="开始时间", nullable=False)
@@ -38,5 +38,5 @@ class Reservation(Base):
     audit_remark: Mapped[str | None] = mapped_column(String(255), comment="审核备注")
 
     user: Mapped[User] = relationship()
-    lab: Mapped[Lab] = relationship()
-    equipment: Mapped[Equipment] = relationship()
+    space: Mapped[Space] = relationship()
+    seat: Mapped[Seat] = relationship()

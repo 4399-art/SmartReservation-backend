@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
-class LabResponse(BaseModel):
+
+class SpaceResponse(BaseModel):
     id: int
     name: str
     location: str | None = None
@@ -13,7 +14,8 @@ class LabResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class LabCreateRequest(BaseModel):
+
+class SpaceCreateRequest(BaseModel):
     name: str
     location: str | None = None
     capacity: int = 0
@@ -23,7 +25,8 @@ class LabCreateRequest(BaseModel):
     img: str | None = None
     status: int = 1
 
-class LabUpdateRequest(BaseModel):
+
+class SpaceUpdateRequest(BaseModel):
     name: str | None = None
     location: str | None = None
     capacity: int | None = None
