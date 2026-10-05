@@ -25,8 +25,14 @@ dependencies = [
     "langchain-chroma>=0.2.0",
     "chromadb>=0.5.0",
     "pyyaml>=6.0",
+    "langgraph>=0.5.4",
+    "langgraph-checkpoint-sqlite>=2.0.11",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true

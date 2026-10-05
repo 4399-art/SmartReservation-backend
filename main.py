@@ -17,6 +17,7 @@ from app.common.exceptions import (
     global_exception_handler,
 )
 from app.api.auth import router as auth_router
+from app.api.chat import router as chat_router
 from app.api.equipment import router as equipment_router
 from app.api.files import router as files_router
 from app.api.lab import router as lab_router
@@ -28,6 +29,7 @@ from app.config import settings, UPLOAD_DIR
 from app.model.equipment import Equipment
 from app.model.lab import Lab
 from app.model.reservation import Reservation
+from app.model.chat_session import ChatSession, ChatMessage
 
 
 def _print_banner(db_ok: bool):
@@ -85,6 +87,7 @@ app.add_middleware(
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
+api_router.include_router(chat_router)
 api_router.include_router(files_router)
 api_router.include_router(user_router)
 api_router.include_router(lab_router)
